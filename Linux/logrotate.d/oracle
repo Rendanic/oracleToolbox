@@ -1,0 +1,22 @@
+/opt/oracle/diag/tnslsnr/*/listener/trace/listener.log /opt/oracle/diag/tnslsnr/*/*/trace/listener_*.log {
+    compress
+    dateext
+    maxage 90
+    rotate 99
+    size=+10240k
+    notifempty
+    missingok
+    copytruncate
+}
+
+/opt/oracle/diag/rdbms/*/*/trace/alert_*.log {
+    compress
+    dateext
+    maxage 900
+    rotate 99
+    size=+4096k
+    notifempty
+    missingok
+    monthly
+}
+
