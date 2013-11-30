@@ -1,0 +1,5 @@
+run
+{
+backup archivelog all not backed up 1 times filesperset 50;
+delete noprompt archivelog all backed up 1 times to disk;
+}

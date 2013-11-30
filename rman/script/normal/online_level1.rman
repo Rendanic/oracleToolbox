@@ -1,0 +1,7 @@
+run
+{
+backup check logical incremental level 1 database filesperset 1;
+backup archivelog all not backed up 1 times filesperset 50;
+delete noprompt archivelog all backed up 1 times to disk;
+delete noprompt obsolete;
+}
