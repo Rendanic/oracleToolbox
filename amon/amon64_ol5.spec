@@ -1,6 +1,6 @@
 Name:		oracle-amon
 Version:	0.38
-Release:        1
+Release:        1.el5
 Summary:	Free Performance Tool AMON from Andrej Simon
 License:	GPL
 URL:		https://sites.google.com/site/freetoolamon
@@ -22,7 +22,8 @@ Binaries from: https://sites.google.com/site/freetoolamon
 
 %prep
 cd %{_topdir}/BUILD
-wget  -nc https://github.com/Rendanic/oracleToolbox/raw/master/amon/bin/amon64_ol5
+#wget  -nc https://github.com/Rendanic/oracleToolbox/raw/master/amon/bin/amon64_ol5
+wget  -O amon64_ol5 http://sites.google.com/site/freetoolamon/download/amon64_ol5
 
 %build
 
