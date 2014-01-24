@@ -1,12 +1,12 @@
-Name:		oradblvm
-Version:	0.2
+24.01.2014 21:30:38Name:		oradblvm
+Version:	0.3
 Release:	1%{?dist}
 Summary:	Scripts for creating physical Volumes, Volume Groups and Filesystem for Oracle Databases
 
 Group:		Database/Tools
 License:	GPL
 URL:		https://github.com/Rendanic/oracleToolbox/tree/master/Linux/fdisk
-#Source0:	
+BuildArch:  noarch
 BuildRoot:	%(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 Vendor:         Thorsten Bruhns (thorsten.bruhns@googlemail.com)
 
@@ -29,12 +29,10 @@ mkdir -p $RPM_BUILD_ROOT/usr/local/bin
 install -m 755 create_oradb_lvm_fs.sh  $RPM_BUILD_ROOT/usr/local/bin/
 install -m 755 sfdisk_lvm_vg.sh  $RPM_BUILD_ROOT/usr/local/bin/
 
-
 %clean
 rm -rf $RPM_BUILD_ROOT
 rm -rf %{_tmppath}/%{name}
 rm -rf %{_topdir}/BUILD/%{name}
-
 
 %files
 %defattr(-,root,root,-)
@@ -42,12 +40,10 @@ rm -rf %{_topdir}/BUILD/%{name}
 /usr/local/bin/sfdisk_lvm_vg.sh
 %doc
 
-
-
 %changelog
-* Wed Jan 23 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.1]
-  - 1st version
-* Wed Jan 23 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.2]
+* Fri Jan 24 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.3]
+  - Changed destination directory for scripts to /usr/sbin and changed architecture to noarch
+* Thu Jan 23 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.2]
   - Bugs in both scripts fixed. False detection of filesystem on OL6/RHEL6
-
-
+* Thu Jan 23 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.1]
+  - 1st version
