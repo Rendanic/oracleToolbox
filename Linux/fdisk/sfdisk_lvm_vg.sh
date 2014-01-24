@@ -78,6 +78,7 @@ do_create_pv()
 		fi
 		
 		pvdisplay ${sdpartition} > /dev/null 2>&1
+		retcode=${?}
 		if [ ${retcode} -eq 0 ]
 		then
 			# We found a valid physical volume on the disc!

@@ -51,7 +51,7 @@ set_env() {
 	lvfrasize=${3}
 
 	# fstype ist bei SLES11 nur ext3, da ext4 nicht supported. :-(
-	rpm -qa | egrep "^SLES-for-VMware-release|sles-release" > /dev/null &2>1
+	rpm -qa | egrep "^SLES-for-VMware-release|sles-release" > /dev/null 2>&1
 	if [ ${?} -eq 0 ]
 	then
 		# SLES gefunden
