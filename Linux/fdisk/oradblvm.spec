@@ -1,4 +1,4 @@
-24.01.2014 21:30:38Name:		oradblvm
+Name:		oradblvm
 Version:	0.3
 Release:	1%{?dist}
 Summary:	Scripts for creating physical Volumes, Volume Groups and Filesystem for Oracle Databases
