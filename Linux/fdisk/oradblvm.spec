@@ -1,5 +1,5 @@
 Name:		oradblvm
-Version:	0.3
+Version:	0.4
 Release:	1%{?dist}
 Summary:	Scripts for creating physical Volumes, Volume Groups and Filesystem for Oracle Databases
 
@@ -9,7 +9,6 @@ URL:		https://github.com/Rendanic/oracleToolbox/tree/master/Linux/fdisk
 BuildArch:  noarch
 BuildRoot:	%(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 Vendor:         Thorsten Bruhns (thorsten.bruhns@googlemail.com)
-
 %description
 sfdisk_lvm_vg.sh
 Creates a partition over whole disk, labeling it as phyiscal disk for LVM and creates a Volume-Group or add the disk to an existing Volume-Group
@@ -41,6 +40,8 @@ rm -rf %{_topdir}/BUILD/%{name}
 %doc
 
 %changelog
+* Sat Feb 15 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.3]
+  - New Version with GPG-Key
 * Fri Jan 24 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.3]
   - Changed destination directory for scripts to /usr/sbin and changed architecture to noarch
 * Thu Jan 23 2014 Thorsten Bruhns <thorsten.bruhns@googlemail.com> [0.2]
