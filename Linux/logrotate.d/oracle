@@ -7,6 +7,9 @@
     notifempty
     missingok
     copytruncate
+    postrotate
+        find /opt/oracle/diag/tnslsnr/*/listener/alert/log*.xml -ctime +10 -exec rm {} \;
+    endscript
 }
 
 /opt/oracle/diag/rdbms/*/*/trace/alert_*.log {
