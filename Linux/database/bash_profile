@@ -1,15 +1,17 @@
 
-# Version 2013-02-20 
+# Version 2015-09-19
+#
+# Set Oracle Environment on last entry in /etc/oratab after login
 
 PATH=$PATH:$HOME/bin:/usr/local/bin
 
 ORACLE_SID=`cat /etc/oratab | grep -v ^# | grep ":Y" | tail -1 | cut -d":" -f1` > /dev/null
 if [ ! ${ORACLE_SID:-999} = 999 ]
 then
-        ORAENV_ASK=NO
+        old_ORAENV_ASK=$ORAENV_ASK
         . oraenv
         export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}/lib
-        ORAENV_ASK=YES
+        ORAENV_ASK=$old_ORAENV_ASK
 fi
 
 export PS1="[\u@\h \W] ("\$\{ORACLE_SID\}") \$ "
