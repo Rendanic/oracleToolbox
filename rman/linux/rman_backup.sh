@@ -97,7 +97,7 @@ setenv()
 	ORATAB=/etc/oratab
 
 	# getting ORACLE_HOME from oratab
-	ORACLE_HOME=`cat ${ORATAB} | grep "^"${ORACLE_SID} | cut -d":" -f2`
+	ORACLE_HOME=`cat ${ORATAB} | grep "^"${ORACLE_SID}":" | cut -d":" -f2`
 	# did we found the SID in oratab?
 	export ORACLE_HOME
 
