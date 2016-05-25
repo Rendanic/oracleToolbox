@@ -10,8 +10,12 @@
 # This script requires a bash due to ${PIPESTATUS[1]} which is not
 # availible under ksh
 #
-# This script creates a copy of ASM SPFile, OCR/Voting and md_backup
+# This script creates a copy of ASM SPFile and md_backup
 # from Grid Infrastructure or OLR from Oracle Restart
+# The script copies the last automatic OCR-Backup when running on node with that 
+# backup. (New strategy. In past we created a backup and copied that file with
+# problems in identifying the right node before creating the manualbackup.)
+#
 # This script must be run as root!
 #
 # The script creates a directory structure for the backups depending on 1st
@@ -37,6 +41,10 @@
 #
 # Changelog
 # Version Date       Description
+# 2.2     2016-05-25 Some more checks for error detection
+#                    Better detection of Restart or Grid Infrastructure
+# 2.1     2013-01-18 Bugfix for getting correct hostname at ocrconfig -showbackup
+#                    new strategy: OCR-Backups won't be created anymore. We copy the last automatic file
 # 2.0     2013-01-12 Rework for destination directories
 #                    2 parameters added for more flexibility
 #                    automatically removing of old backups
@@ -48,6 +56,13 @@
 #                    added hostname to olr-backupfile
 #                    write some informations to syslog with logger
 # 1.0     2012-08-10 Initial Release
+
+# Todo
+# - addional error-handling when creating the destination directory
+#   there was a problem in 1 environment where the destination directory could not be created and no 
+#   error for debugging is availible.
+# - some additions for a central directory on a shared filesystem
+#   changes for the statefiles are needed when working with a shared filesystem for all cluster nodes
 
 print_syslog()
 {
@@ -90,8 +105,8 @@ set_env()
 
 	# set environment from /etc/oratab
 	# 1st line with +ASM will be used for CRS_HOME
-	ORACLE_SID=`grep "^+ASM" ${ORATAB} |cut -d":" -f1`
-	if [ ${?} -ne 0 ]
+	ORACLE_SID=$(grep "^+ASM" ${ORATAB} |cut -d":" -f1)
+	if [ ! "${ORACLE_SID:0:4}" = '+ASM' ] 
 	then
 		echo "ASM-Environment can't be found in oratab!"
 		abort_script 82
@@ -109,6 +124,13 @@ set_env()
 
 		PATH=${PATH}:${ORACLE_HOME}/bin
 		export PATH
+	fi
+
+	OCRLOCCFG=/etc/oracle/ocr.loc
+        if [ ! -f $OCRLOCCFG ]
+	then
+		echo "Important configfile "$OCRLOCCFG" not found!"
+		abort_script 83	
 	fi
 
 	# who is clusterwareowner?
@@ -141,11 +163,10 @@ set_env()
 do_ocrcheck()
 {
 	# Do we have Oracle Restart or full Grid Infrastructure?
-	# Oracle Restart => OCR-Location is $ORACLE_HOME/cdata/localhost/local.ocr
-	ocrcheck -config | grep $ORACLE_HOME/cdata/localhost/local.ocr > /dev/null
-	retcode=${PIPESTATUS[1]}
+	# read the configuration data from Oracle
+	. ${OCRLOCCFG}
 	
-	if [ ${retcode} -eq 0 ]
+	if [ ${local_only} = 'true' ]
 	then
 		# We have Oracle Restart
 		export ORACRS_TYPE=Restart
@@ -161,7 +182,7 @@ do_ocrcheck()
 	OCRCHECKLOGFILE=${OCRBACKUPLOGDIR}/ocrcheck.log
 	date >> ${OCRCHECKLOGFILE}
 	ocrcheck >> ${OCRCHECKLOGFILE}
-	retcode=${PIPESTATUS[0]}
+	retcode=${?}
 
 	if [ ${retcode} -eq 0 ]
 	then
@@ -202,40 +223,63 @@ do_ocrbackup()
 
 	if [ ${ORACRS_TYPE} = 'GridInfra' ]
 	then
-		logfile=${OCRBACKUPLOGDIR}/ocrconfig_export.log
-		echo "Creating OCR manualbackup" | tee -a ${logfile}
-		ocrconfig -manualbackup >> ${logfile}
-		retcode=${PIPESTATUS[0]}
-	
-		if [ ! ${retcode} -eq 0 ]
-		then
-			echo "ocrconfig -manualbackup not possible!" | tee -a ${logfile}
-			abort_script 101
-		else
-			hostshort=`hostname -s`
-			ocrbackupfile="/"`ocrconfig -showbackup | grep ^${hostshort} | sort | cut -d"/" -f4- | tail -1`
-			ocrbackupfilename=`basename ${ocrbackupfile}`			
-			ocrdestfile=${OCRBACKUPDATADIR}/${ocrbackupfilename}
+		# if the filesystem for automatic backups is not change, the backups of ocr are only availible on the node who did the backups
+		# which node is the starting node of this script?
+		olsnodename=`olsnodes -l`
 
-			# we move the manualbackup due to problems with automatic removal of old backups from ocrconfig
-			# => Filesystem will be running out of space when not removing old backups!
-			echo "Moving OCR manualbackup to "${ocrdestfile} | tee -a ${logfile}
-			mv ${ocrbackupfile} ${ocrdestfile}
+		# getting last backupentry
+		lastOCRBackup=`ocrconfig -showbackup auto |sort|tail -1`
+
+		# getting clusternode from last backup
+		lastOCRBackupNode=`echo ${lastOCRBackup} | cut -d" " -f1`
+
+		# extract filename of last backup
+		ocrbackupfile="/"`echo ${lastOCRBackup} | cut -d"/" -f4-`
+
+		echo "information from ocrconfig: "${lastOCRBackup} | tee -a ${logfile}
+
+		# is last backupnode same like current node?
+		if  [ ! ${olsnodename} = ${lastOCRBackupNode:-" "} ]
+		then
+			# we are not on the automatic backupnode!
+			# no OCR-Backup reachable
+			echo "the automtic backup was taken on "${lastOCRBackupNode}". Skipping creation of OCR-Copy!" | tee -a ${logfile}
+			print_syslog "automtic backup was taken on "${lastOCRBackupNode}". Skipping creation of OCR-Copy!" 
+		else
+			# We are on the actual automatic backupnode
+			# => we can copy the last automatic backup!
+			
+			# is the automatic backup existing?
+			if [ ! -f  ${ocrbackupfile} ]
+			then
+				echo "File not found! (" ${ocrbackupfile}")"  | tee -a ${logfile}
+				abort_script 191
+			fi
+			
+			# file is existing - we can copy now
+			echo "Copy OCR autobackup" | tee -a ${logfile}
+			ocrbackupfilename=`basename ${ocrbackupfile}`			
+			
+			ocrdestfile=${OCRBACKUPDATADIR}/${ocrbackupfilename}_${BACKUPDATE}
+	
+			cp -v ${ocrbackupfile} ${ocrdestfile}
 			retcode=${?}
 			if [ ${retcode} -eq 0 ]
 			then
 				echo "compressing OCR" | tee -a ${logfile}
-				gzip -9 ${OCRBACKUPDATADIR}/${ocrbackupfilename}
-				echo "ocrconfig -manualbackup valid" | tee -a ${logfile}
+				gzip -9 ${ocrdestfile}
+				echo "copy of OCR-Backup valid" | tee -a ${logfile}
 				touch ${OCRBACKUPSTATEDIR}/ocrconfig_export.ok
 				print_syslog "OCR backup written to "${ocrdestfile}".gz"
 			else
-				echo "moving manualbackup failure!" | tee -a ${logfile}
+				echo "copy of autobackup failed!" | tee -a ${logfile}
 				abort_script 190
 
 			fi
-		fi
-	fi
+
+		fi # if  [ ! ${olsnodename} = ${lastOCRBackupNode:-" "} ]
+
+	fi # if [ ${ORACRS_TYPE} = 'GridInfra' ]
 	
 }
 
@@ -306,7 +350,7 @@ delete_old_backups()
 	# Removing OLR
 	find ${OCRBACKUPDATADIR} -name "backup_export_olr_`hostname`_??????_??????.gz" -ctime +${OCRBACKUPPURGEDAYS} -type f -exec rm -vf {} \; | tee -a ${REMOVEBACKUPFILELOG}
 	# Removing OCR
-	find ${OCRBACKUPDATADIR} -name "backup_????????_??????.ocr.gz" -ctime +${OCRBACKUPPURGEDAYS} -type f -exec rm -vf {} \; | tee -a ${REMOVEBACKUPFILELOG}
+	find ${OCRBACKUPDATADIR} -name "backup??.ocr_??????_??????.gz" -ctime +${OCRBACKUPPURGEDAYS} -type f -exec rm -vf {} \; | tee -a ${REMOVEBACKUPFILELOG}
 }
 ##########################################################################################
 ##########################################################################################
@@ -329,5 +373,4 @@ delete_old_backups
 touch ${OCRBACKUPSTATEDIR}/ora_crs_metadata_backup.ok
 date | tee -a ${logfile}
 print_syslog "End Code=0"
-
 
