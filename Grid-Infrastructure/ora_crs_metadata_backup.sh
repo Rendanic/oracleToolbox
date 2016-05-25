@@ -43,6 +43,7 @@
 # Version Date       Description
 # 2.2     2016-05-25 Some more checks for error detection
 #                    Better detection of Restart or Grid Infrastructure
+#                    Compatibility against Grid-Infrastructure 12.1
 # 2.1     2013-01-18 Bugfix for getting correct hostname at ocrconfig -showbackup
 #                    new strategy: OCR-Backups won't be created anymore. We copy the last automatic file
 # 2.0     2013-01-12 Rework for destination directories
@@ -234,7 +235,7 @@ do_ocrbackup()
 		lastOCRBackupNode=`echo ${lastOCRBackup} | cut -d" " -f1`
 
 		# extract filename of last backup
-		ocrbackupfile="/"`echo ${lastOCRBackup} | cut -d"/" -f4-`
+		ocrbackupfile="/"$(echo ${lastOCRBackup} | awk '{print $4}')
 
 		echo "information from ocrconfig: "${lastOCRBackup} | tee -a ${logfile}
 
@@ -250,7 +251,7 @@ do_ocrbackup()
 			# => we can copy the last automatic backup!
 			
 			# is the automatic backup existing?
-			if [ ! -f  ${ocrbackupfile} ]
+			if [ ! -f  "${ocrbackupfile}" ]
 			then
 				echo "File not found! (" ${ocrbackupfile}")"  | tee -a ${logfile}
 				abort_script 191
@@ -307,7 +308,14 @@ do_asmspfilebackup()
 	# where oracle has storred the spfile
 	#
 	# The needed environment was set in set_env
-	pfilename=${OCRBACKUPDATADIR}/init${ORACLE_SID}_${BACKUPDATE}.ora
+	pfilename=${OCRBACKUPDATADIR}/init${ORACLE_SID:1}_${BACKUPDATE}.ora
+
+	# could we create the pfile as ORACRSOWNER?
+	if [ $? -ne 0 ]
+	then
+		echo "Unable to create the pfile as " ${ORACRSOWNER}" "${pfilename}
+		abort_script 198
+	fi
 
 # su to ORACRSOWNER needed for sqlplus. Enviroment was set in set_env
 # we exit sqlplus when getting a problem. ASM must be started with a SPfile!
