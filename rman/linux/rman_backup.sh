@@ -1,14 +1,16 @@
 #!/bin/bash
 #
-# $Id: rman_backup.sh 873 2013-08-26 13:19:27Z tbr $
+# Date: 12.07.2016
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
 # Simple RMAN-Backupscript 
 #
-# Parameter 1: ORACLE_SID
-# Parameter 2: Backuptype (<Filename>.rman)
-# Parameter 3: Directory for .rman-Files (not required!)
+# Important Note for Real Application Clusters!
+# Do NOT USE the real ORACLE_SID. Please use the normal DB_NAME without the
+# the number at the end. The scripts is detecting the real instance from the
+# clusterware. We are able to backup RAC OneNode Databases or policy managed
+# environments now!
 #
 # This script search for an rman-file in $ORACLE_BASE/admin/$ORACLE_SID/rman
 # with filename <parameter 2>.rman. This search could be changed with 3rd parameter.
@@ -42,6 +44,38 @@
 #
 #
 
+PROGNAME=`basename $0`
+PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+
+function print_usage() {
+  echo "Usage:"
+  echo "  $PROGNAME -a <action> -s <ORACLE_SID|DB_NAME> [-r <Directory>]"
+  echo "            [-l <Directory>] [-c <CATALOGCONNECT>] [-t <TARGETCONNECT>]"
+  echo "            [--service <Servicename in GI/Restart>]"
+  echo "  $PROGNAME -h"
+}
+
+function print_help() {
+  echo ""
+  print_usage
+  echo ""
+  echo "RMAN Backupscript"
+  echo ""
+  echo "-a/--action           Name for .rman-Script without extension"
+  echo "-s/--ORACLE_SID       ORACLE_SID / DB_NAME (RAC) of Database"
+  echo "                       Please use the DB_NAME from oratab in RAC-Environments!"
+  echo "-r/--rmanscriptdir    Directory for *.rman-Scripts"
+  echo "                       Default: <ORACLE_BASE>/admin/<ORACLE_SID|DB_NAME>/rman"
+  echo "-l/--logdir           Directory for tee-output of RMAN"
+  echo "                       Default: <ORACLE_BASE>/admin/<ORACLE_SID|DB_NAME>/rman/log"
+  echo "-c/--catalogconnect   connect catalog <catalogconnect>"
+  echo "                       You could use the environment variable CATALOGCONNECT as well>"
+  echo "-t/--targetconnect    connect target <targetconnect>"
+  echo "                       You could use the environment variable TARGETCONNECT as well>"
+  echo "--service             Execute rman when Service in GI/Restart is running on current node."
+  
+}
+
 print_syslog()
 {
 	# Don't write to syslog when logger is not there
@@ -66,7 +100,7 @@ check_catalog() {
 	print_syslog "Check for working RMAN Catalog"
 	catalogconnect="connect catalog "${CATALOGCONNECT}
 	${ORACLE_HOME}/bin/rman << _EOF_
-connect target /
+connect target ${TARGETCONNECT:-"/"}
 ${catalogconnect} 
 _EOF_
 
@@ -83,14 +117,106 @@ _EOF_
 	fi
 }
 
+check_service()
+{
+	# get data from srvctl for service
+	retstr=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE})
+	echo "Checking for running service "${INSTANCE_SERVICE}" on current node"
+	echo $retstr
+
+	# Is service existing?
+	echo ${retstr} | grep "Service "${INSTANCE_SERVICE}" is not running" >/dev/null
+	if [ ${?} -eq 0 ]
+	then
+		echo "Service not existing. Aborting backup!"
+		echo ${retstr}
+		echo "Aborting backup!"
+		exit 1
+	fi
+
+	# Is service running??
+	running_instances=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g')
+	node_sid=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
+	if [ ! $node_sid = $running_instances ]
+	then
+		echo "Service not running on current node. Skipping backup!"
+		exit 0
+	fi
+}
+
 setenv()
 {
-	ORACLE_SID=${1}
-	export ORACLE_SID
-	param3=${3}
+	SHORTOPTS="ha:s:r:l:t:c:"
+	LONGOPTS="help,action:,ORACLE_SID:,rmanscriptdir:,logdir:,targetconnect:,catalogconnect:,service:"
 
-	# Backuptyp
-	rmanbackuptyp=${2}
+	ARGS=$(getopt -s bash --options $SHORTOPTS  --longoptions $LONGOPTS --name $PROGNAME -- "$@" ) 
+	if [ ${?} -ne 0 ]
+	then
+		exit
+	fi
+
+	eval set -- "$ARGS"
+
+	while true;
+	do
+		case "$1" in
+			-h|--help)
+				print_help
+				exit 0;;
+
+			-a|--action)
+					rmanbackuptyp=${2}
+				shift 2;;
+
+			-s|--ORACLE_SID)
+					ORACLE_SID=${2}
+					export ORACLE_SID
+				shift 2;;
+
+			-r|--rmanscriptdir)
+					rmanscripdir=${2}
+				shift 2;;
+
+			-l|--logdir)
+					rmanlogdir=${2}
+				shift 2;;
+
+			-t|--targetconnect)
+					TARGETCONNECT=${2}
+					export TARGETCONNECT
+				shift 2;;
+
+			-c|--catalogconnect)
+					CATALOGCONNECT=${2}
+					export CATALOGCONNECT
+				shift 2;;
+
+			--service)
+					INSTANCE_SERVICE=${2}
+					export INSTANCE_SERVICE
+				shift 2;;
+			--)
+				shift
+				break;;
+		esac
+	done
+
+	if [ -z ${ORACLE_SID} ]
+	then
+		echo "Missing parameter for ORACLE_SID"
+		echo " "
+		print_usage
+		exit 1
+	fi
+	
+	if [ -z ${rmanbackuptyp} ]
+	then
+		echo "Missing parameter for action"
+		echo " "
+		print_usage
+		exit 1
+	fi
+	
 	# set NLS_DATE_FORMAT for nice date-format
 	export NLS_DATE_FORMAT='dd.mm.yy hh24:mi:ss'
 
@@ -101,8 +227,33 @@ setenv()
 	# did we found the SID in oratab?
 	export ORACLE_HOME
 
-	if [ -z ${ORACLE_HOME} ]
+	if [ ! -z ${ORACLE_HOME} ]
 	then
+		# we could be on Grid-Infrastructure
+		# => There is only an entry for the DB_NAME in oratab!
+                # => We need to find the right ORACLE_SID from Clusterware
+		OCRLOC=/etc/oracle/ocr.loc
+		if [ -f $OCRLOC ]
+		then
+			. $OCRLOC
+			. /etc/oracle/olr.loc
+			export crs_home
+			export SRVCTL=${ORACLE_HOME}/bin/srvctl
+
+			if [ ! -z ${INSTANCE_SERVICE} ]
+			then
+				check_service
+			fi
+		fi
+
+		if [ ${local_only:-"true"} = 'false' ]
+		then
+			# We are on a real Grid-Infrastructure!
+			# => overwrite the ORACLE_SID from command parameterline
+			ORACLE_SID=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
+		fi
+
+	else	
 		echo "ORACLE_HOME "${ORACLE_SID}" not found in "${ORATAB}
 		print_syslog "ORACLE_SID "${ORACLE_SID}" not found in "${ORATAB}
 		abort_script 10
@@ -139,26 +290,19 @@ setenv()
 	export ORACLE_BASE
 
 	# where are the rman-skripts?
-	# we have the option with param3 for a dedicated directory
-	if [ -d ${param3:-"leer"}  ]
+	# we have the option with rmanscripdir for a dedicated directory
+	if [ ! -d ${rmanscripdir:-"leer"}  ]
 	then
-		# we got an existing directory as parameter 3
-		# => we use that directory for searching the rman-skripts
-		# => we are not using the default in $ORACLE_BASE/admin/$ORACLE_SID
-		rmanskriptdir=${3}
-	else
 		# Do we have a rman-Skript for doing the backup?
 		# The skript must be located in $ORACLE_BASE/admin/ORACLE_SID/rman/<Skript>.rman
 
-		rmanskriptdir=${ORACLE_BASE}/admin/${ORACLE_SID}/rman
+		rmanscripdir=${ORACLE_BASE}/admin/${ORACLE_SID}/rman
 	fi
 
-	rmanskript=${rmanskriptdir}/${rmanbackuptyp}.rman
+	rmanskript=${rmanscripdir}/${rmanbackuptyp}.rman
 
-	rmanlogdir=${rmanskriptdir}/log
 	rmanlog=${rmanlogdir}/${ORACLE_SID}_${rmanbackuptyp}.log
 
-	# Do we have 
 	if [ ! ${CATALOGCONNECT:-"leer"} = 'leer' ]
 	then
 		check_catalog
@@ -198,7 +342,7 @@ do_backup()
 	# tee, damit alle Ausgaben weg geschrieben werden.
 	${ORACLE_HOME}/bin/rman \
 << _EOF_  | tee -a ${rmanlog}
-	connect target /
+	connect target ${TARGETCONNECT:-"/"}
 	${catalogconnect}
 @${rmanskript}
 _EOF_
@@ -219,18 +363,10 @@ _EOF_
 #                                   MAIN                                     #
 #                                                                            #
 ##############################################################################
-if [ ${#} -ne 2 -a ${#} -ne 3 ]
-then
-	echo "rman_backup.sh <ORACLE_SID> <Backuptyp> <Directory for .rman-Files, not required>"
-	exit 1
-fi
 print_syslog "Begin"
-setenv ${*}
+setenv "$@"
 check_requirements
 do_backup
 retcode=${?}
 print_syslog "End Code="${retcode}
 exit ${retcode}
-
-
-
