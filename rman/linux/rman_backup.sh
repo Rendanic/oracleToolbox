@@ -49,8 +49,9 @@ PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
 
 function print_usage() {
   echo "Usage:"
-  echo "  $PROGNAME -p <Password> -H <Hostname> -c <action> -n <Parameter> -w <warning> -c <critical>"
-  echo "     -p <Password> -H <Hostname> -c <action> -n <Parameter> -w <warning> -c <critical>"
+  echo "  $PROGNAME -a <action> -s <ORACLE_SID|DB_NAME> [-r <Directory>]"
+  echo "            [-l <Directory>] [-c <CATALOGCONNECT>] [-t <TARGETCONNECT>]"
+  echo "            [--service <Servicename in GI/Restart>]"
   echo "  $PROGNAME -h"
 }
 
@@ -67,8 +68,11 @@ function print_help() {
   echo "                       Default: <ORACLE_BASE>/admin/<ORACLE_SID|DB_NAME>/rman"
   echo "-l/--logdir           Directory for tee-output of RMAN"
   echo "                       Default: <ORACLE_BASE>/admin/<ORACLE_SID|DB_NAME>/rman/log"
-  echo "-c/--catalogconnect   "
-  echo "-t/--targetconnect    Name for given Action"
+  echo "-c/--catalogconnect   connect catalog <catalogconnect>"
+  echo "                       You could use the environment variable CATALOGCONNECT as well>"
+  echo "-t/--targetconnect    connect target <targetconnect>"
+  echo "                       You could use the environment variable TARGETCONNECT as well>"
+  echo "--service             Execute rman when Service in GI/Restart is running on current node."
   
 }
 
@@ -96,7 +100,7 @@ check_catalog() {
 	print_syslog "Check for working RMAN Catalog"
 	catalogconnect="connect catalog "${CATALOGCONNECT}
 	${ORACLE_HOME}/bin/rman << _EOF_
-connect target /
+connect target ${TARGETCONNECT:-"/"}
 ${catalogconnect} 
 _EOF_
 
@@ -113,10 +117,32 @@ _EOF_
 	fi
 }
 
+check_service()
+{
+	# get data from srvctl for service
+	retstr=$(srvctl status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE})
+	# Is service existing?
+	echo ${retstr} | grep "Service "${INSTANCE_SERVICE}" is not running" >/dev/null
+	if [ ${?} -ne 0 ]
+	then
+		echo "Service not existing. Aborting backup!"
+		echo ${retstr}
+		echo "Aborting backup!"
+		exit 1
+	fi
+	# Is service running??
+
+	retstr=$(srvctl status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE})
+	running_instances=$(srvctl status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g')
+	node_sid=$(${ORACLE_HOME}/bin/srvctl status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
+	echo $node_sid $running_instances
+exit 0
+	
+}
 setenv()
 {
 	SHORTOPTS="ha:s:r:l:t:c:"
-	LONGOPTS="help,action:,ORACLE_SID:,rmanscriptdir:,logdir:,targetconnect:,catalogconnect:"
+	LONGOPTS="help,action:,ORACLE_SID:,rmanscriptdir:,logdir:,targetconnect:,catalogconnect:,service:"
 
 	ARGS=$(getopt -s bash --options $SHORTOPTS  --longoptions $LONGOPTS --name $PROGNAME -- "$@" ) 
 	if [ ${?} -ne 0 ]
@@ -134,48 +160,36 @@ setenv()
 				exit 0;;
 
 			-a|--action)
-				if [ -n "$2" ];
-				then
 					rmanbackuptyp=${2}
-				fi
 				shift 2;;
 
 			-s|--ORACLE_SID)
-				if [ -n "$2" ];
-				then
 					ORACLE_SID=${2}
 					export ORACLE_SID
-				fi
 				shift 2;;
 
 			-r|--rmanscriptdir)
-				if [ -s "$2" ];
-				then
 					rmanscripdir=${2}
-				fi
 				shift 2;;
 
 			-l|--logdir)
-				if [ -s "$2" ];
-				then
 					rmanlogdir=${2}
-				fi
 				shift 2;;
 
 			-t|--targetconnect)
-				if [ -s "$2" ];
-				then
 					TARGETCONNECT=${2}
-				fi
+					export TARGETCONNECT
 				shift 2;;
 
 			-c|--catalogconnect)
-				if [ -s "$2" ];
-				then
 					CATALOGCONNECT=${2}
-				fi
+					export CATALOGCONNECT
 				shift 2;;
 
+			--service)
+					INSTANCE_SERVICE=${2}
+					export INSTANCE_SERVICE
+				shift 2;;
 			--)
 				shift
 				break;;
@@ -202,13 +216,20 @@ setenv()
 		then
 			. $OCRLOC
 			. /etc/oracle/olr.loc
+			export crs_home
+
+			if [ ! -z ${INSTANCE_SERVICE} ]
+			then
+				check_service
+			fi
 		fi
+exit
 
 		if [ ${local_only:-"true"} = 'false' ]
 		then
 			# We are on a real Grid-Infrastructure!
 			# => overwrite the ORACLE_SID from command parameterline
-			ORACLE_SID=$(${ORACLE_HOME}/bin/srvctl status instance -db ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
+			ORACLE_SID=$(${ORACLE_HOME}/bin/srvctl status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
 		fi
 
 	else	
@@ -300,7 +321,7 @@ do_backup()
 	# tee, damit alle Ausgaben weg geschrieben werden.
 	${ORACLE_HOME}/bin/rman \
 << _EOF_  | tee -a ${rmanlog}
-	connect target /
+	connect target ${TARGETCONNECT:-"/"}
 	${catalogconnect}
 @${rmanskript}
 _EOF_
