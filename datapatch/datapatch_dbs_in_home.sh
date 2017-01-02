@@ -2,7 +2,7 @@
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
-# Date: 30.12.2016
+# Date: 02.01.2017
 
 # This script is for applying Oracle Patches in Databases with datapatch
 # Please keep in mind, that this only works with Oracle from 12c onwards.
@@ -64,14 +64,15 @@ check_crs(){
         if [ ${crs_local:-"true"} = 'false' ]
         then
             echo "Grid-Infrastructure found"
-            echo "#################################################"
             CRS_TYPE=cluster
         else
             echo "Oracle Restart found"
-            echo "#################################################"
             CRS_TYPE=restart
         fi
+    else
+            echo "Single Instance found"
     fi
+    echo "#################################################"
     export CRS_TYPE
 }
 
@@ -126,7 +127,6 @@ _EOF
 
 
 restart_db(){
-echo ${ORACLE_SID:-"leer"}
     mode=${1:-""}
     echo "#################################################"
     echo "Restart Oracle Database "$mode
@@ -180,6 +180,10 @@ check_datapatch(){
 
     echo -e "$datapatchout"
     # Search for result
+    echo -e "$datapatchout" | grep "Bootstrap timed out after " > /dev/null
+    if [ $? -eq 0 ] ; then
+        return 10
+    fi
     echo -e "$datapatchout" | grep "The database must be in upgrade mode" > /dev/null
     if [ $? -eq 0 ] ; then
         return 2
@@ -233,6 +237,7 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
         # added SIDs without Resource will skip this loop
         # => Ignore added SIDs in oratab for Instances in GI
         if [ ${CRS_TYPE:-"unknown"} = 'cluster' ] ; then
+
             # we are on a real Grid-Infrastructure
             # is this ORACLE_SID a DB_NAME or a fakename for easy handling of oraenv?
             $SRVCTL config database -d $ORACLE_SID >/dev/null
@@ -242,6 +247,26 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
             fi
             # get current ORACLE_SID on host from Grid-Infrastructure for this Instance
             get_sid_crs 
+
+        elif [ ${CRS_TYPE:-"unknown"} = 'restart' ] ; then
+
+            $SRVCTL config database -d $ORACLE_SID >/dev/null
+            if [ $? -ne 0 ] ; then
+                echo "Skipping this ORACLE_SID as it is not a real dateabase in oratab!"
+                continue
+            fi
+
+        else
+
+            # Single-Instance
+            # => Check for init.ora ora spfile.ora
+            if [ -f $ORACLE_HOME/dbs/init${ORACLE_SID}.ora -o -f $ORACLE_HOME/dbs/spfile${ORACLE_SID}.ora ] ; then
+                echo "Parameterfile for Single-Instance found"
+            else
+                echo "Skipping this ORACLE_SID as it is not a real dateabase in oratab!"
+                continue
+            fi
+
         fi
 
         check_open_database
@@ -252,11 +277,20 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
         #  0 = nothing to do
         #  1 = datapatch 'normal'
         #  2 = datapatch 'upgrade' mode
+        # 10 = Bootstrap failure
         # 99 = Returncode <>0 from datapatch
 
         if [ $retval -eq 0 ] ; then
-
             echo "Nothing to apply!"
+            continue
+
+        elif [ $retval -eq 10 ] ; then
+            echo "#################################################"
+            echo "-------------------------------------------------"
+            echo "Bootstrap Failure. Cannot get patch information. Aborting installation for this Database!"
+            echo "Mostly a restart help to skip this problem. The real reason is not known at the moment."
+            echo "-------------------------------------------------"
+            echo "#################################################"
             continue
 
         elif [ $retval -eq 1 ] ; then
@@ -267,7 +301,7 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
             do_datapatch $ORACLE_SID
 
             echo "#################################################"
-            echo "final chack after datapatch"
+            echo "final check after datapatch"
             check_datapatch $ORACLE_SID
 
         elif [ $retval -eq 2 ] ; then
@@ -275,20 +309,20 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
             echo "#################################################"
             echo "Restarting Database in Upgrade mode"
             echo "#################################################"
-            if [ ${CRS_TYPE:-"unknown"} = 'restart' ] ; then
+            if [ ${CRS_TYPE:-"unknown"} = 'cluster' ] ; then
                 echo "Restart RAC Database"
-                restart_db_crs upgrade false
+                restart_db_crs "upgrade exclusive" false
                 do_datapatch $ORACLE_SID
                 restart_db_crs nomount true
                 $SRVCTL stop database -d $DB_NAME
                 $SRVCTL start database -d $DB_NAME
             else
-                restart_db upgrade
+                restart_db "upgrade exclusive"
                 do_datapatch $ORACLE_SID
                 restart_db " "
             fi
             echo "#################################################"
-            echo "final chack affter datapatch"
+            echo "final check after datapatch"
             check_datapatch $ORACLE_SID
 
         fi
