@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 12.07.2016
+# Date: 11.01.2017
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
@@ -125,7 +125,7 @@ check_service()
 	echo $retstr
 
 	# Is service existing?
-	echo ${retstr} | grep "Service "${INSTANCE_SERVICE}" is not running" >/dev/null
+	echo ${retstr} | grep "^PRCR-1001:" >/dev/null
 	if [ ${?} -eq 0 ]
 	then
 		echo "Service not existing. Aborting backup!"
@@ -135,9 +135,9 @@ check_service()
 	fi
 
 	# Is service running??
-	running_instances=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g')
+	running_instances=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g' | sed 's/ //g')
 	node_sid=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
-	if [ ! $node_sid = $running_instances ]
+	if [ ! $node_sid = "$running_instances" ]
 	then
 		echo "Service not running on current node. Skipping backup!"
 		exit 0
