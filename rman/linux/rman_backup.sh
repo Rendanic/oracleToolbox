@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 11.01.2017
+# Date: 28.02.2017
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
@@ -245,6 +245,9 @@ setenv()
 				check_service
 			fi
 		fi
+
+		# Some Installations store local_only in uppercase...
+		local_only=$(echo ${local_only:-"true"} | tr '[:upper:]' '[:lower:]
 
 		if [ ${local_only:-"true"} = 'false' ]
 		then
