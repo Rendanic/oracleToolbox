@@ -247,7 +247,7 @@ setenv()
 		fi
 
 		# Some Installations store local_only in uppercase...
-		local_only=$(echo ${local_only:-"true"} | tr '[:upper:]' '[:lower:]
+		local_only=$(echo ${local_only:-"true"} | tr '[:upper:]' '[:lower:]')
 
 		if [ ${local_only:-"true"} = 'false' ]
 		then
