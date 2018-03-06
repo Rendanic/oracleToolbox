@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 28.02.2017
+# Date: 06.03.2018
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
@@ -174,11 +174,11 @@ setenv()
 				shift 2;;
 
 			-r|--rmanscriptdir)
-					rmanscripdir=${2}
+					RMANSCRIPTDIR=${2}
 				shift 2;;
 
 			-l|--logdir)
-					rmanlogdir=${2}
+					RMANLOGDIR=${2}
 				shift 2;;
 
 			-t|--targetconnect)
@@ -293,18 +293,18 @@ setenv()
 	export ORACLE_BASE
 
 	# where are the rman-skripts?
-	# we have the option with rmanscripdir for a dedicated directory
-	if [ ! -d ${rmanscripdir:-"leer"}  ]
+	# we have the option with RMANSCRIPTDIR for a dedicated directory
+	if [ ! -d ${RMANSCRIPTDIR:-"leer"}  ]
 	then
 		# Do we have a rman-Skript for doing the backup?
 		# The skript must be located in $ORACLE_BASE/admin/ORACLE_SID/rman/<Skript>.rman
 
-		rmanscripdir=${ORACLE_BASE}/admin/${ORACLE_SID}/rman
+		RMANSCRIPTDIR=${ORACLE_BASE}/admin/${ORACLE_SID}/rman
 	fi
 
-	rmanskript=${rmanscripdir}/${rmanbackuptyp}.rman
+	rmanskript=${RMANSCRIPTDIR}/${rmanbackuptyp}.rman
 
-	rmanlog=${rmanlogdir}/${ORACLE_SID}_${rmanbackuptyp}.log
+	rmanlog=${RMANLOGDIR}/${ORACLE_SID}_${rmanbackuptyp}.log
 
 	if [ ! ${CATALOGCONNECT:-"leer"} = 'leer' ]
 	then
@@ -317,10 +317,10 @@ setenv()
 
 check_requirements()
 {
-	if [ ! -d ${rmanlogdir} ]
+	if [ ! -d ${RMANLOGDIR} ]
 	then
-		echo "Directory "${rmanlogdir}" for RMAN logfiles not existing."
-		print_syslog "Directory "${rmanlogdir}" for RMAN logfiles not existing."
+		echo "Directory "${RMANLOGDIR}" for RMAN logfiles not existing."
+		print_syslog "Directory "${RMANLOGDIR}" for RMAN logfiles not existing."
 		abort_script 21
 	fi
 
