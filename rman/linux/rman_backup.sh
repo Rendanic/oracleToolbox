@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 06.03.2018
+# Date: 23.03.2018
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
@@ -300,6 +300,12 @@ setenv()
 		# The skript must be located in $ORACLE_BASE/admin/ORACLE_SID/rman/<Skript>.rman
 
 		RMANSCRIPTDIR=${ORACLE_BASE}/admin/${ORACLE_SID}/rman
+	fi
+
+	if [ ! -z ${RMANTNS_ADMIN} ]
+	then
+		echo "Setting TNS_ADMIN from RMANTNS_ADMIN to: "${RMANTNS_ADMIN}
+		export TNS_ADMIN=${RMANTNS_ADMIN}
 	fi
 
 	rmanskript=${RMANSCRIPTDIR}/${rmanbackuptyp}.rman
