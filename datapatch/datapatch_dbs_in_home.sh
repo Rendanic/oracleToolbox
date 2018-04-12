@@ -2,7 +2,7 @@
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
-# Date: 02.01.2017
+# Date: 12.04.2018
 
 # This script is for applying Oracle Patches in Databases with datapatch
 # Please keep in mind, that this only works with Oracle from 12c onwards.
@@ -20,6 +20,7 @@
 # - Special requirements for real Grid-Infrastructure
 #   All Database must be running with 'cluster_database=true'
 # - only for Database Version >= 12.1 
+# - instance_name = db_unique_name
 #
 
 # This program is free software; you can redistribute it and/or modify
@@ -267,6 +268,12 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
                 continue
             fi
 
+        fi
+
+        if [ ! -f ${ORACLE_HOME}/OPatch/datapatch ] ; then
+            echo "datapatch not availible... Exiting"
+            echo "#################################################"
+            exit 0
         fi
 
         check_open_database
