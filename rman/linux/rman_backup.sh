@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 23.03.2018
+# Date: 22.05.2018
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
@@ -135,12 +135,22 @@ check_service()
 	fi
 
 	# Is service running??
-	running_instances=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g' | sed 's/ //g')
-	node_sid=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
-	if [ ! $node_sid = "$running_instances" ]
+	if [ $local_only = 'TRUE' ]
 	then
-		echo "Service not running on current node. Skipping backup!"
-		exit 0
+		running_service=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running//g' | sed 's/ //g')
+		if [ ! $running_service = '' ]
+		then
+			echo "Service not running on current node. Skipping backup!"
+			exit 0
+		fi
+	else
+		running_instances=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g' | sed 's/ //g')
+		node_sid=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
+		if [ ! $node_sid = "$running_instances" ]
+		then
+			echo "Service not running on current node. Skipping backup!"
+			exit 0
+		fi
 	fi
 }
 
