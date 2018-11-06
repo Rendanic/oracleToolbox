@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 04.11.2018
+# Date: 06.11.2018
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
@@ -10,12 +10,15 @@
 # could not use the failover configuration from SQLNet...
 #
 # Parameter:
-# - ORACLE_SID
-# - DB-User with 'create session' and 'select on v$database'
-# - DB-Password
-# - Listener-Port
-# - DB-Servicename
+# - filename for configuration file
 #
+# example for configuration file:
+# db_user=c##keepalived
+# db_password=topsecret
+# db_port=1521
+# db_service=testdb
+
+
 # Why ORACLE_SID and DB-Servicename?
 # The ORACLE_SID is only used for setting the ORACLE_HOME.
 # DB-Service should be point to a service who is only online
@@ -36,30 +39,42 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #
 
-ORACLE_SID=${1}
-db_user=${2}
-db_password=${3}
-db_port=${4:-1521}
-db_service=${5:-${1}}
+configfile=${1}
 
 set_env(){
-  ORACLE_HOME=$(cat /etc/oratab | grep "^${ORACLE_SID}:" | cut -d":" -f2)
-  echo "ORACLE_HOME: "$ORACLE_HOME
-  export ORACLE_HOME
+  for ORACLE_HOME  in $(cat /etc/oratab | grep "^[a-zA-Z]" | cut -d":" -f2) ; do
+    SQLPLUS=${ORACLE_HOME}/bin/sqlplus
+    if [ -x $SQLPLUS ] ; then
+      echo "ORACLE_HOME: "$ORACLE_HOME
+      export ORACLE_HOME SQLPLUS
+      return
+    fi
+  done
 }
 
+read_config(){
+  if [ -f ${configfile} ] ; then
+    . ${configfile}
+
+    export db_user db_password db_port db_service
+  else
+    echo "missing configuration file: "${configfile}
+    exit 99
+  fi
+}
 check_login(){
   db_connect=localhost:${db_port}/${db_service}
   echo "Login as ${db_user} to ${db_connect}"
 
-  output=$(${ORACLE_HOME}/bin/sqlplus -L -S /NOLOG <<_EOF_
+  output=$(${SQLPLUS} -L -S /NOLOG <<_EOF_
 whenever sqlerror exit 10 rollback
 set lines 2000
 set pages 0
 set trimspool on
 set heading off
 conn ${db_user}/${db_password}@${db_connect}
-select database_role from v\$database;
+SELECT SYS_CONTEXT ('USERENV', 'DB_NAME') FROM DUAL;
+SELECT 'on ' || SYS_CONTEXT ('USERENV', 'HOST') FROM DUAL;
 _EOF_
 )
 retcode=$?
@@ -68,7 +83,7 @@ exit ${retcode}
 }
 
 
-#check_pmon
 set_env
+read_config
 check_login
 exit $?
