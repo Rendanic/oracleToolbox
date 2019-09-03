@@ -44,8 +44,9 @@
 #
 #
 
-PROGNAME=`basename $0`
-PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+PROGNAME=$(basename "$0")
+# shellcheck disable=SC2001 disable=SC2086 disable=SC2034
+PROGPATH=$(echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,')
 
 function print_usage() {
   echo "Usage:"
@@ -84,14 +85,15 @@ print_syslog()
 	
 	if [ ${retcode} -eq 0 ]
 	then
-		logger `basename $0` $param1 $param2 : " "${*}
+		# shellcheck disable=SC2046
+		logger $(basename "$0") "${*}"
 	fi
 }
 
 abort_script()
 {
-	print_syslog "Abort Code="${1}
-	exit ${1}
+	print_syslog "Abort Code=${1}"
+	exit "${1}"
 }
 
 check_catalog() {
@@ -99,7 +101,7 @@ check_catalog() {
 	# catalog not working => switch to nocatalog!
 	print_syslog "Check for working RMAN Catalog"
 	catalogconnect="connect catalog "${CATALOGCONNECT}
-	${ORACLE_HOME}/bin/rman << _EOF_
+	"${ORACLE_HOME}"/bin/rman << _EOF_
 connect target ${TARGETCONNECT:-"/"}
 ${catalogconnect} 
 _EOF_
@@ -120,33 +122,34 @@ _EOF_
 check_service()
 {
 	# get data from srvctl for service
-	retstr=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE})
-	echo "Checking for running service "${INSTANCE_SERVICE}" on current node"
-	echo $retstr
+	retstr=$("${SRVCTL}" status service -d "${ORACLE_SID}" -s "${INSTANCE_SERVICE}")
+	echo "Checking for running service ${INSTANCE_SERVICE} on current node"
+	echo "$retstr"
 
 	# Is service existing?
-	echo ${retstr} | grep "^PRCR-1001:" >/dev/null
-	if [ ${?} -eq 0 ]
+	echo "${retstr}" | grep "^PRCR-1001:" >/dev/null
+	if [ "${?}" -eq 0 ]
 	then
 		echo "Service not existing. Aborting backup!"
-		echo ${retstr}
+		echo "${retstr}"
 		echo "Aborting backup!"
 		exit 1
 	fi
 
 	# Is service running??
-	if [ $local_only = 'TRUE' ]
+	if [ "$local_only" = 'TRUE' ]
 	then
-		running_service=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running//g' | sed 's/ //g')
-		if [ ! $running_service = '' ]
+		running_service=$(${SRVCTL} status service -d "${ORACLE_SID}" -s "${INSTANCE_SERVICE}" | sed 's/^Service .* is running//g' | sed 's/ //g')
+		if [ ! "$running_service" = '' ]
 		then
 			echo "Service not running on current node. Skipping backup!"
 			exit 0
 		fi
 	else
-		running_instances=$(${SRVCTL} status service -d ${ORACLE_SID} -s ${INSTANCE_SERVICE} | sed 's/^Service .* is running on instance(s)//g' | sed 's/ //g')
+		running_instances=$("${SRVCTL}" status service -d "${ORACLE_SID}" -s "${INSTANCE_SERVICE}" | sed 's/^Service .* is running on instance(s)//g' | sed 's/ //g')
+		# shellcheck disable=SC2086 disable=SC2046
 		node_sid=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
-		if [ ! $node_sid = "$running_instances" ]
+		if [ ! "$node_sid" = "$running_instances" ]
 		then
 			echo "Service not running on current node. Skipping backup!"
 			exit 0
@@ -159,7 +162,7 @@ setenv()
 	SHORTOPTS="ha:s:r:l:t:c:"
 	LONGOPTS="help,action:,ORACLE_SID:,rmanscriptdir:,logdir:,targetconnect:,catalogconnect:,service:"
 
-	ARGS=$(getopt -s bash --options $SHORTOPTS  --longoptions $LONGOPTS --name $PROGNAME -- "$@" ) 
+	ARGS=$(getopt -s bash --options "$SHORTOPTS"  --longoptions "$LONGOPTS" --name "$PROGNAME" -- "$@" )
 	if [ ${?} -ne 0 ]
 	then
 		exit
@@ -211,7 +214,7 @@ setenv()
 		esac
 	done
 
-	if [ -z ${ORACLE_SID} ]
+	if [ -z "${ORACLE_SID}" ]
 	then
 		echo "Missing parameter for ORACLE_SID"
 		echo " "
@@ -219,7 +222,7 @@ setenv()
 		exit 1
 	fi
 	
-	if [ -z ${rmanbackuptyp} ]
+	if [ -z "${rmanbackuptyp}" ]
 	then
 		echo "Missing parameter for action"
 		echo " "
@@ -233,11 +236,11 @@ setenv()
 	ORATAB=/etc/oratab
 
 	# getting ORACLE_HOME from oratab
-	ORACLE_HOME=`cat ${ORATAB} | grep "^"${ORACLE_SID}":" | cut -d":" -f2`
+	ORACLE_HOME=$(grep "^${ORACLE_SID}:" "${ORATAB}" | cut -d":" -f2)
 	# did we found the SID in oratab?
 	export ORACLE_HOME
 
-	if [ ! -z ${ORACLE_HOME} ]
+	if [ ! -z "${ORACLE_HOME}" ]
 	then
 		# we could be on Grid-Infrastructure
 		# => There is only an entry for the DB_NAME in oratab!
@@ -250,35 +253,37 @@ setenv()
 			export crs_home
 			export SRVCTL=${ORACLE_HOME}/bin/srvctl
 
-			if [ ! -z ${INSTANCE_SERVICE} ]
+			if [ ! -z "${INSTANCE_SERVICE}" ]
 			then
 				check_service
 			fi
 		fi
 
 		# Some Installations store local_only in uppercase...
+		# shellcheck disable=SC2086 disable=SC2046
 		local_only=$(echo ${local_only:-"true"} | tr '[:upper:]' '[:lower:]')
 
-		if [ ${local_only:-"true"} = 'false' ]
+		if [ "${local_only:-'true'}" = 'false' ]
 		then
 			# We are on a real Grid-Infrastructure!
 			# => overwrite the ORACLE_SID from command parameterline
+			# shellcheck disable=SC2086 disable=SC2046
 			ORACLE_SID=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
 		fi
 
 	else	
-		echo "ORACLE_HOME "${ORACLE_SID}" not found in "${ORATAB}
-		print_syslog "ORACLE_SID "${ORACLE_SID}" not found in "${ORATAB}
+		echo "ORACLE_HOME ${ORACLE_SID} not found in ${ORATAB}"
+		print_syslog "ORACLE_SID ${ORACLE_SID} not found in ${ORATAB}"
 		abort_script 10
 		
 	fi
 
-	if [ ! -d ${ORACLE_HOME:-"leer"} ]
+	if [ ! -d "${ORACLE_HOME:-'leer'}" ]
 	then
 		# ORACLE_HOME not existing or ORACLE_SID not availible
 		# => we need to exit the script!
-		echo "ORACLE_HOME "${ORACLE_HOME}" not found in "${ORATAB}
-		print_syslog "ORACLE_HOME "${ORACLE_HOME}" not found in "${ORATAB}
+		echo "ORACLE_HOME ${ORACLE_HOME} not found in ${ORATAB}"
+		print_syslog "ORACLE_HOME ${ORACLE_HOME} not found in ${ORATAB}"
 		abort_script 11
 	else
 		export ORACLE_HOME
@@ -288,23 +293,23 @@ setenv()
 	orabase=${ORACLE_HOME}/bin/orabase
 	# Do we have an executable for getting the current ORACLE_BASE?
 	# This script is not availible for Oracle <11g. :-(
-	if [ -x ${orabase} ]
+	if [ -x "${orabase}" ]
 	then
-		ORACLE_BASE=`${orabase}` > /dev/null
+		ORACLE_BASE=$("${orabase}") > /dev/null
 	fi
 
 	# do we have a valid ORACLE_BASE?
-	if [ ! -d ${ORACLE_BASE:-"leer"} ]
+	if [ ! -d "${ORACLE_BASE:-'leer'}" ]
 	then
-		echo "We cannot work without ORACLE_BASE="${ORACLE_BASE}
-		print_syslog "We cannot work without ORACLE_BASE="${ORACLE_BASE}
+		echo "We cannot work without ORACLE_BASE=${ORACLE_BASE}"
+		print_syslog "We cannot work without ORACLE_BASE=${ORACLE_BASE}"
 		abort_script 12
 	fi
 	export ORACLE_BASE
 
 	# where are the rman-skripts?
 	# we have the option with RMANSCRIPTDIR for a dedicated directory
-	if [ ! -d ${RMANSCRIPTDIR:-"leer"}  ]
+	if [ ! -d "${RMANSCRIPTDIR:-'leer'}" ]
 	then
 		# Do we have a rman-Skript for doing the backup?
 		# The skript must be located in $ORACLE_BASE/admin/ORACLE_SID/rman/<Skript>.rman
@@ -312,9 +317,9 @@ setenv()
 		RMANSCRIPTDIR=${ORACLE_BASE}/admin/${ORACLE_SID}/rman
 	fi
 
-	if [ ! -z ${RMANTNS_ADMIN} ]
+	if [ ! -z "${RMANTNS_ADMIN}" ]
 	then
-		echo "Setting TNS_ADMIN from RMANTNS_ADMIN to: "${RMANTNS_ADMIN}
+		echo "Setting TNS_ADMIN from RMANTNS_ADMIN to: ${RMANTNS_ADMIN}"
 		export TNS_ADMIN=${RMANTNS_ADMIN}
 	fi
 
@@ -322,7 +327,7 @@ setenv()
 
 	rmanlog=${RMANLOGDIR}/${ORACLE_SID}_${rmanbackuptyp}.log
 
-	if [ ! ${CATALOGCONNECT:-"leer"} = 'leer' ]
+	if [ ! "${CATALOGCONNECT:-'leer'}" = 'leer' ]
 	then
 		check_catalog
 	else
@@ -333,25 +338,25 @@ setenv()
 
 check_requirements()
 {
-	if [ ! -d ${RMANLOGDIR} ]
+	if [ ! -d "${RMANLOGDIR}" ]
 	then
-		echo "Directory "${RMANLOGDIR}" for RMAN logfiles not existing."
-		print_syslog "Directory "${RMANLOGDIR}" for RMAN logfiles not existing."
+		echo "Directory ${RMANLOGDIR} for RMAN logfiles not existing."
+		print_syslog "Directory ${RMANLOGDIR} for RMAN logfiles not existing."
 		abort_script 21
 	fi
 
-	if [ ! -f ${rmanskript} ]
+	if [ ! -f "${rmanskript}" ]
 	then
-		echo "RMAN-script "${rmanskript}" not existing!"
-		print_syslog "RMAN-script "${rmanskript}" not existing!"
+		echo "RMAN-script ${rmanskript} not existing!"
+		print_syslog "RMAN-script ${rmanskript} not existing!"
 		abort_script 22
 	fi
 
-	touch ${rmanlog}
-	if [ ! -f ${rmanlog} ]
+	touch "${rmanlog}"
+	if [ ! -f "${rmanlog}" ]
 	then
-		echo "Logfile "${rmanlog}" for RMAN could not be created."
-		print_syslog "Logfile "${rmanlog}" for RMAN could not be created."
+		echo "Logfile ${rmanlog} for RMAN could not be created."
+		print_syslog "Logfile ${rmanlog} for RMAN could not be created."
 		abort_script 23
 	fi
 }
@@ -359,22 +364,22 @@ check_requirements()
 do_backup()
 {
 	# tee, damit alle Ausgaben weg geschrieben werden.
-	${ORACLE_HOME}/bin/rman \
+	"${ORACLE_HOME}"/bin/rman \
 << _EOF_  | tee -a ${rmanlog}
 	connect target ${TARGETCONNECT:-"/"}
 	${catalogconnect}
 @${rmanskript}
 _EOF_
 	retcode=${PIPESTATUS[0]}
-	if [ ${retcode} -eq 0 ]
+	if [ "${retcode}" -eq 0 ]
 	then
-		print_syslog "RMAN Backup successful. Logfile "${rmanlog}
+		print_syslog "RMAN Backup successful. Logfile ${rmanlog}"
 	else
-		echo "RMAN return code "${retcode}". Please check logfile "${rmanlog}
-		print_syslog "RMAN return code "${retcode}". Please check logfile "${rmanlog}
+		echo "RMAN return code ${retcode}. Please check logfile ${rmanlog}"
+		print_syslog "RMAN return code ${retcode}. Please check logfile ${rmanlog}"
 		abort_script 99
 	fi
-	return ${retcode}
+	return "${retcode}"
 }
 
 ##############################################################################
@@ -386,6 +391,6 @@ print_syslog "Begin"
 setenv "$@"
 check_requirements
 do_backup
-retcode=${?}
-print_syslog "End Code="${retcode}
-exit ${retcode}
+retcode="${?}"
+print_syslog "End Code=${retcode}"
+exit "${retcode}"
