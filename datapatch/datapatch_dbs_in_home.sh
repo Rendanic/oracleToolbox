@@ -38,6 +38,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 if [ $# -ne 1 ] ; then
+    # shellcheck disable=SC2086
     echo "$(basename $0) <ORACLE_HOME>"
     exit 10
 fi
@@ -60,9 +61,10 @@ check_crs(){
             . /etc/oracle/olr.loc
             export crs_home
             export crs_home
-            crs_local=$(echo ${local_only} | tr '[:upper:]' '[:lower:]')
+            # shellcheck disable=SC2154
+            crs_local=$(echo "${local_only}" | tr '[:upper:]' '[:lower:]')
 
-        if [ ${crs_local:-"true"} = 'false' ]
+        if [ "${crs_local:-'true'}" = 'false' ]
         then
             echo "Grid-Infrastructure found"
             CRS_TYPE=cluster
@@ -78,8 +80,9 @@ check_crs(){
 }
 
 get_sid_crs(){
-    ORACLE_SID=$(${SRVCTL} status instance -d ${ORACLE_SID} -node $(${crs_home}/bin/olsnodes -l) | cut -d" " -f2)
-    echo "Setting new ORACLE_SID from CRS: "$ORACLE_SID
+    # shellcheck disable=SC2046
+    ORACLE_SID=$("${SRVCTL}" status instance -d "${ORACLE_SID}" -node $("${crs_home}/bin/olsnodes" -l) | cut -d" " -f2)
+    echo "Setting new ORACLE_SID from CRS: $ORACLE_SID"
     export ORACLE_SID
 }
 
@@ -88,19 +91,20 @@ check_environment(){
     echo "Doing some prechecks before starting the work"
 
     # check if user executing this script is owner of Oracle
-    echo "ORACLE_HOME: "${patch_home}
+    echo "ORACLE_HOME: ${patch_home}"
     oracleexe=${patch_home}/bin/oracle
-    if [ ! -x ${oracleexe} ] ; then
-        echo "oracle is not found in "${oracleexe}
+    if [ ! -x "${oracleexe}" ] ; then
+        echo "oracle is not found in ${oracleexe}"
         exit 1
     fi
 
     echo "Check owner of Oracle"
-    oracleowner=$(ls -l ${oracleexe}| awk '{print $3}')
-    if [ ! $(id -un) = $oracleowner ] ; then
+    # shellcheck disable=SC2012
+    oracleowner=$(ls -l "${oracleexe}"| awk '{print $3}')
+    if [ ! "$(id -un)" = "$oracleowner" ] ; then
         echo "Please execute this scipt as $oracleowner"
-        echo "Current user: "$(id -un)
-        echo "ORACLE_HOME : " ${patch_home}
+        echo "Current user: $(id -un)"
+        echo "ORACLE_HOME : ${patch_home}"
         exit 2
     fi
 }
@@ -109,12 +113,12 @@ restart_db_crs() {
     startmode=$1
     clustermode=${2:-"false"}
     echo "Check state with srvctl"
-    $SRVCTL status database -d $DB_NAME
+    "$SRVCTL" status database -d "$DB_NAME"
     echo "Stop Instances on every node"
-    $SRVCTL stop database -d $DB_NAME
-    echo "Set cluster_database to "$clustermode
+    "$SRVCTL" stop database -d "$DB_NAME"
+    echo "Set cluster_database to $clustermode"
     # try to start the database
-    $ORACLE_HOME/bin/sqlplus -S -L /nolog  << _EOF
+    "$ORACLE_HOME/bin/sqlplus" -S -L /nolog  << _EOF
 conn / as sysdba
 startup nomount quiet
 show parameter cluster_database
@@ -130,10 +134,11 @@ _EOF
 restart_db(){
     mode=${1:-""}
     echo "#################################################"
-    echo "Restart Oracle Database "$mode
+    echo "Restart Oracle Database $mode"
     echo "#################################################"
     # check for pmon
-    ps -elf | grep " ora_pmon_"$ORACLE_SID"$" > /dev/null 2>&1
+    # shellcheck disable=SC2009
+    ps -elf | grep " ora_pmon_${ORACLE_SID}$" > /dev/null 2>&1
     if [ $? -eq 0 ] ; then
         shutdowndb="shutdown immediate"
     else
@@ -141,7 +146,7 @@ restart_db(){
     fi
 
     # try to start the database
-    $ORACLE_HOME/bin/sqlplus -S -L /nolog  << _EOF
+    "$ORACLE_HOME/bin/sqlplus" -S -L /nolog  << _EOF
 conn / as sysdba
 PROMPT $shutdowndb
 $shutdowndb
@@ -154,7 +159,7 @@ check_open_database(){
     echo "#################################################"
     echo "Checking for running database and starting it"
     echo "#################################################"
-    $ORACLE_HOME/bin/sqlplus -S -L /nolog  >/dev/null<< _EOF
+    "$ORACLE_HOME/bin/sqlplus" -S -L /nolog  >/dev/null<< _EOF
 whenever sqlerror exit 1
 conn / as sysdba
 set termout off feedback off
@@ -172,9 +177,8 @@ check_datapatch(){
     echo "#################################################"
     echo "Check for Patches with datapatch"
     echo "#################################################"
-    datapatchout=$($DATAPATCH -verbose -prereq -upgrade_mode_only -db $ORACLE_SID)
-    retcode=$?
-    if [ $? -ne 0 ] ; then
+    datapatchout=$("$DATAPATCH" -verbose -prereq -upgrade_mode_only -db "$ORACLE_SID")
+    if [ "$?" -ne 0 ] ; then
         echo "datapatch returned with returncode <> 0!"
         return 99
     fi
@@ -206,9 +210,9 @@ check_datapatch(){
 
 do_datapatch(){
     echo "#################################################"
-    echo "Execute datapatch for ORACLE_SID "$1
+    echo "Execute datapatch for ORACLE_SID $1"
     echo "#################################################"
-    $DATAPATCH -verbose -db $1 ${2:-""}
+    "$DATAPATCH" -verbose -db "$1" "${2:-''}"
 }
 
 
@@ -219,40 +223,42 @@ check_crs
 IFS=$'\n'
 for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
 
-    export ORACLE_SID=$(echo $sid | cut -d":" -f1)
-    export ORACLE_HOME=$(echo $sid | cut -d":" -f2)
+    ORACLE_SID="$(echo "$sid" | cut -d":" -f1)"
+    ORACLE_HOME="$(echo "$sid" | cut -d":" -f2)"
+    export ORACLE_SID ORACLE_HOME
 
     # DB_NAME is needed when running on Grid-Infrastructure for srvctl
-    export DB_NAME=$ORACLE_SID
+    DB_NAME=$ORACLE_SID
+    export DB_NAME
 
     DATAPATCH=$ORACLE_HOME/OPatch/datapatch
-    SRVCTL=$ORACLE_HOME/bin/srvctl
+    SRVCTL="$ORACLE_HOME/bin/srvctl"
 
     echo "#################################################"
-    echo "Working on ORACLE_SID: "$ORACLE_SID
-    if [ ! $patch_home = $ORACLE_HOME ] ; then
+    echo "Working on ORACLE_SID: $ORACLE_SID"
+    if [ ! "$patch_home" = "$ORACLE_HOME" ] ; then
         continue
     else
         # get ORACLE_SID from Clusterware when Grid-Infrastructure is used
         # => GI only stores the DB_NAME as SID in oratab!
         # added SIDs without Resource will skip this loop
         # => Ignore added SIDs in oratab for Instances in GI
-        if [ ${CRS_TYPE:-"unknown"} = 'cluster' ] ; then
+        if [ "${CRS_TYPE:-'unknown'}" = 'cluster' ] ; then
 
             # we are on a real Grid-Infrastructure
             # is this ORACLE_SID a DB_NAME or a fakename for easy handling of oraenv?
-            $SRVCTL config database -d $ORACLE_SID >/dev/null
-            if [ $? -ne 0 ] ; then
+            "$SRVCTL" config database -d "$ORACLE_SID" >/dev/null
+            if [ "$?" -ne 0 ] ; then
                 echo "Skipping this ORACLE_SID as it is not a real dateabase in oratab!"
                 continue
             fi
             # get current ORACLE_SID on host from Grid-Infrastructure for this Instance
             get_sid_crs 
 
-        elif [ ${CRS_TYPE:-"unknown"} = 'restart' ] ; then
+        elif [ "${CRS_TYPE:-'unknown'}" = 'restart' ] ; then
 
-            $SRVCTL config database -d $ORACLE_SID >/dev/null
-            if [ $? -ne 0 ] ; then
+            "$SRVCTL" config database -d "$ORACLE_SID" >/dev/null
+            if [ "$?" -ne 0 ] ; then
                 echo "Skipping this ORACLE_SID as it is not a real dateabase in oratab!"
                 continue
             fi
@@ -261,7 +267,7 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
 
             # Single-Instance
             # => Check for init.ora ora spfile.ora
-            if [ -f $ORACLE_HOME/dbs/init${ORACLE_SID}.ora -o -f $ORACLE_HOME/dbs/spfile${ORACLE_SID}.ora ] ; then
+            if [ -f "$ORACLE_HOME/dbs/init${ORACLE_SID}.ora" -o -f "$ORACLE_HOME/dbs/spfile${ORACLE_SID}.ora" ] ; then
                 echo "Parameterfile for Single-Instance found"
             else
                 echo "Skipping this ORACLE_SID as it is not a real dateabase in oratab!"
@@ -270,14 +276,14 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
 
         fi
 
-        if [ ! -f ${ORACLE_HOME}/OPatch/datapatch ] ; then
+        if [ ! -f "${ORACLE_HOME}/OPatch/datapatch" ] ; then
             echo "datapatch not availible... Exiting"
             echo "#################################################"
             exit 0
         fi
 
         check_open_database
-        check_datapatch $ORACLE_SID
+        check_datapatch "$ORACLE_SID"
         retval=$?
 
         # returncodes:
@@ -287,11 +293,11 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
         # 10 = Bootstrap failure
         # 99 = Returncode <>0 from datapatch
 
-        if [ $retval -eq 0 ] ; then
+        if [ "$retval" -eq 0 ] ; then
             echo "Nothing to apply!"
             continue
 
-        elif [ $retval -eq 10 ] ; then
+        elif [ "$retval" -eq 10 ] ; then
             echo "#################################################"
             echo "-------------------------------------------------"
             echo "Bootstrap Failure. Cannot get patch information. Aborting installation for this Database!"
@@ -300,18 +306,18 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
             echo "#################################################"
             continue
 
-        elif [ $retval -eq 1 ] ; then
+        elif [ "$retval" -eq 1 ] ; then
 
             echo "#################################################"
             echo "doing normal datapatch apply"
             echo "#################################################"
-            do_datapatch $ORACLE_SID
+            do_datapatch "$ORACLE_SID"
 
             echo "#################################################"
             echo "final check after datapatch"
-            check_datapatch $ORACLE_SID
+            check_datapatch "$ORACLE_SID"
 
-        elif [ $retval -eq 2 ] ; then
+        elif [ "$retval" -eq 2 ] ; then
 
             echo "#################################################"
             echo "Restarting Database in Upgrade mode"
@@ -319,18 +325,18 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
             if [ ${CRS_TYPE:-"unknown"} = 'cluster' ] ; then
                 echo "Restart RAC Database"
                 restart_db_crs "upgrade exclusive" false
-                do_datapatch $ORACLE_SID
+                do_datapatch "$ORACLE_SID"
                 restart_db_crs nomount true
-                $SRVCTL stop database -d $DB_NAME
-                $SRVCTL start database -d $DB_NAME
+                "$SRVCTL" stop database -d "$DB_NAME"
+                "$SRVCTL" start database -d "$DB_NAME"
             else
                 restart_db "upgrade exclusive"
-                do_datapatch $ORACLE_SID
+                do_datapatch "$ORACLE_SID"
                 restart_db " "
             fi
             echo "#################################################"
             echo "final check after datapatch"
-            check_datapatch $ORACLE_SID
+            check_datapatch "$ORACLE_SID"
 
         fi
     fi
