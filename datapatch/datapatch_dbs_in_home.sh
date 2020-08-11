@@ -43,7 +43,7 @@ if [ $# -ne 1 ] ; then
     exit 10
 fi
 
-patch_home=$1
+patch_home="$1"
 
 check_crs(){
 
@@ -172,17 +172,36 @@ _EOF
     fi
 }
 
+check_orchestration_summary() {
+    code=  'import json,sys,os
+            obj=json.load(sys.stdin)
+            for db in obj["sqlpatch"]["patchQueue"].keys():
+            if obj["sqlpatch"]["patchQueue"][db] is None:
+                # all patches applied for the PDB
+                continue
+            else:
+                print db
+                os._exit(1)
+            '
+
+#cat $1 | python -c "${code}"
+}
 check_datapatch(){
     ORACLE_SID=$1
     echo "#################################################"
     echo "Check for Patches with datapatch"
     echo "#################################################"
-    datapatchout=$("$DATAPATCH" -verbose -prereq -upgrade_mode_only -db "$ORACLE_SID")
+    orchestration_summary="/tmp/datapatch_check_orchestration_summary_${$}.json"
+    datapatchout=$("$DATAPATCH" -verbose -prereq -upgrade_mode_only -db "$ORACLE_SID" -orchestration_summary "$orchestration_summary")
     if [ "$?" -ne 0 ] ; then
         echo "datapatch returned with returncode <> 0!"
         return 99
     fi
 
+exit
+    # https://stackoverflow.com/questions/1955505/parsing-json-with-unix-tools
+    # python -c "import sys,json; obj=json.load(sys.stdin); sys.stdout.write(json.dumps($1))"; }
+    # cho $a | python -c 'import json,sys;obj=json.load(sys.stdin);print obj["sqlpatch"]["patchQueue"]'
     echo -e "$datapatchout"
     # Search for result
     echo -e "$datapatchout" | grep "Bootstrap timed out after " > /dev/null
@@ -193,7 +212,7 @@ check_datapatch(){
     if [ $? -eq 0 ] ; then
         return 2
     fi
-    echo -e "$datapatchout" | grep "not installed in the SQL registry" > /dev/null
+    echo -e "$datapatchout" | grep -i "not installed" > /dev/null
     if [ $? -eq 0 ] ; then
         return 1
     else
@@ -212,7 +231,8 @@ do_datapatch(){
     echo "#################################################"
     echo "Execute datapatch for ORACLE_SID $1"
     echo "#################################################"
-    "$DATAPATCH" -verbose -db "$1" "${2:-''}"
+    orchestration_summary="/tmp/datapatch_check_orchestration_summary_${$}.json"
+    "$DATAPATCH" -verbose -db "$1" "${2:-''}" -orchestration_summary "$orchestration_summary"
 }
 
 
@@ -284,7 +304,7 @@ for sid in $(cat /etc/oratab | grep -v "^#" | grep "^[a-zA-Z]") ; do
 
         check_open_database
         check_datapatch "$ORACLE_SID"
-        retval=$?
+        retval="$?"
 
         # returncodes:
         #  0 = nothing to do
