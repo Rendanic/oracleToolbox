@@ -100,7 +100,7 @@ check_catalog() {
 	print_syslog "Check for working RMAN Catalog"
 	catalogconnect="connect catalog "${CATALOGCONNECT}
 	${ORACLE_HOME}/bin/rman << _EOF_
-connect target ${TARGETCONNECT:-"/"}
+connect target "${TARGETCONNECT:-'/'}"
 ${catalogconnect} 
 _EOF_
 
@@ -361,7 +361,7 @@ do_backup()
 	# tee, damit alle Ausgaben weg geschrieben werden.
 	${ORACLE_HOME}/bin/rman \
 << _EOF_  | tee -a ${rmanlog}
-	connect target ${TARGETCONNECT:-"/"}
+	connect target "${TARGETCONNECT:-'/'}"
 	${catalogconnect}
 @${rmanskript}
 _EOF_
