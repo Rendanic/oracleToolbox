@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Date: 22.05.2018
+# Date: 28.01.2021
 #
 # Thorsten Bruhns (thorsten.bruhns@opitz-consulting.de)
 #
